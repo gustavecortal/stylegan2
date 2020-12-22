@@ -17,43 +17,43 @@ from pathlib import Path
 import typer
 from typing import Optional
 
-def extract_conv_names(model):
-    # layers are G_synthesis/{res}x{res}/...
+def extract_conv_names(model, res_log2, min_h, min_w):
+    # layers are G_synthesis/{resolution_h}x{resolution_w}/...
     # make a list of (name, resolution, level, position)
-    # Currently assuming square(?)
 
     model_names = list(model.trainables.keys())
     conv_names = []
 
-    resolutions =  [4*2**x for x in range(9)]
+    resolutions_h =  [min_h*2**x for x in range(res_log2+1)]
+    resolutions_w =  [min_w*2**x for x in range(res_log2+1)]
 
     level_names = [["Conv0_up", "Const"],
                     ["Conv1", "ToRGB"]]
     
     position = 0
     # option not to split levels
-    for res in resolutions:
-        root_name = f"G_synthesis/{res}x{res}/"
+    for res in zip(resolutions_h,resolutions_w):
+        root_name = f"G_synthesis/{res[0]}x{res[1]}/"
         for level, level_suffixes in enumerate(level_names):
             for suffix in level_suffixes:
                 search_name = root_name + suffix
                 matched_names = [x for x in model_names if x.startswith(search_name)]
-                to_add = [(name, f"{res}x{res}", level, position) for name in matched_names]
+                to_add = [(name, f"{res[0]}x{res[1]}", level, position) for name in matched_names]
                 conv_names.extend(to_add)
             position += 1
 
     return conv_names
 
 
-def blend_models(model_1, model_2, resolution, level, blend_width=None, verbose=False):
+def blend_models(model_1, model_2, resolution_h, resolution_w, res_log2, min_h, min_w, level, blend_width=None, verbose=False):
 
     # y is the blending amount which y = 0 means all model 1, y = 1 means all model_2
 
     # TODO add small x offset for smoother blend animations
-    resolution = f"{resolution}x{resolution}"
+    resolution = f"{resolution_h}x{resolution_w}"
     
-    model_1_names = extract_conv_names(model_1)
-    model_2_names = extract_conv_names(model_2)
+    model_1_names = extract_conv_names(model_1, res_log2, min_h, min_w)
+    model_2_names = extract_conv_names(model_2, res_log2, min_h, min_w)
 
     assert all((x == y for x, y in zip(model_1_names, model_2_names)))
 
@@ -90,13 +90,17 @@ def blend_models(model_1, model_2, resolution, level, blend_width=None, verbose=
 
 def main(low_res_pkl: Path, # Pickle file from which to take low res layers
          high_res_pkl: Path, # Pickle file from which to take high res layers
-         resolution: int, # Resolution level at which to switch between models
-         level: int  = 0, # Switch at Conv block 0 or 1?
+         resolution_h: int, # Resolution (height) level at which to switch between models
+         resolution_w: int, # Resolution (width) level at which to switch between models
+         res_log2 : int,
+         min_h : int,
+         min_w : int,    
+         level: int  = 0,         # Switch at Conv block 0 or 1?
          blend_width: Optional[float] = None, # None = hard switch, float = smooth switch (logistic) with given width
          output_grid: Optional[Path] = "blended.jpg", # Path of image file to save example grid (None = don't save)
          seed: int = 0, # seed for random grid
          output_pkl: Optional[Path] = None, # Output path of pickle (None = don't save)
-         verbose: bool = False, # Print out the exact blending fraction
+         verbose: bool = False # Print out the exact blending fraction
          ):
 
     grid_size = (3, 3)
@@ -107,7 +111,7 @@ def main(low_res_pkl: Path, # Pickle file from which to take low res layers
             low_res_G, low_res_D, low_res_Gs = misc.load_pkl(low_res_pkl)
             high_res_G, high_res_D, high_res_Gs = misc.load_pkl(high_res_pkl)
 
-            out = blend_models(low_res_Gs, high_res_Gs, resolution, level, blend_width=blend_width, verbose=verbose)
+            out = blend_models(low_res_Gs, high_res_Gs, resolution_h, resolution_w, res_log2, min_h, min_w, level, blend_width=blend_width, verbose=verbose)
 
             if output_grid:
                 rnd = np.random.RandomState(seed)
