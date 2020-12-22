@@ -1,6 +1,8 @@
 ## Blend two models trained on non-square images
 
-**An example with two models trained on 1024x1280 images: 
+**An example with two models trained on 1024x1280 images**
+
+If you want to switch at 256x320:
 
 blend_models.main(path_to_low_res_model, path_to_high_res_model, resolution_h = 320, resolution_w = 256, res_log2 = 8, min_h = 5, min_w = 4)
 
